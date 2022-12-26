@@ -55,11 +55,24 @@ pub fn read_chunk<R: Read>(reader: &mut R) -> Result<Vec<u8>, S3Error> {
 
 #[cfg(any(feature = "with-tokio", feature = "with-async-std"))]
 pub async fn read_chunk_async<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, S3Error> {
-    let mut chunk = Vec::with_capacity(CHUNK_SIZE);
-    let mut take = reader.take(CHUNK_SIZE as u64);
-    take.read_to_end(&mut chunk).await?;
+    let mut chunk: Box<[u8]> = Box::new([0u8; CHUNK_SIZE]);
+    let mut cursor = 0;
 
-    Ok(chunk)
+    while cursor < CHUNK_SIZE {
+        let buf = &mut chunk[cursor..];
+        let read = reader.read(buf).await?;
+
+        if read == 0 {
+            break;
+        } else {
+            cursor += read;
+        }
+    }
+
+    let mut vec = chunk.into_vec();
+    vec.truncate(cursor);
+
+    Ok(vec)
 }
 
 pub trait GetAndConvertHeaders {
